@@ -1,6 +1,5 @@
 import cv2
-#import tensorflow as tf
-import os
+import tensorflow as tf
 import json
 import gc
 import mediapipe as mp
@@ -8,7 +7,6 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python.vision.hand_landmarker import HandLandmark, HandLandmarkerOptions
 import numpy as np
 import pandas as pd
-from tensorflow.python.ops.numpy_ops.np_utils import result_type
 
 #loading files
 video_path = '../Dataset/WSASL/temp'
@@ -69,3 +67,12 @@ print(df)
 del df
 del data
 gc.collect()
+
+with tf.io.TFRecordWriter('train.tfrecord') as writer:
+    for id, array in array_dict.items():
+        feature = {
+            'video_id': tf.train.Feature(bytes_list=tf.train.BytesList(value = [id.encode])),
+            'landmarks': tf.train.Feature(bytes_list=tf.train.BytesList(value = [array.tobytes()])),
+            'shape' : tf.train.Feature(int64_list=tf.train.Int64List(value = [list(array.shape)]))
+        }
+        example = tf.train.Example(feature = tf.train.Features(feature=feature))
