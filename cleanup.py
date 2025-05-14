@@ -11,7 +11,7 @@ for entry in data:
     entry['instances'] = [
         inst for inst in entry['instances']
         if not (
-            inst['split'] == 'train' and
+            inst['split'] == 'val' and
             not os.path.isfile(os.path.join(video_dir, f"{inst['video_id']}.mp4"))
         )
     ]

@@ -38,7 +38,7 @@ def process_and_move_videos(src_dir, dst_dir):
             print(f"Converted: {fname} -> 25 FPS")
 
 def main():
-    src = '../Dataset/WSASL/train'
+    src = '../Dataset/WSASL/test'
     dst = '../Dataset/WSASL/temp'
     process_and_move_videos(src, dst)
 

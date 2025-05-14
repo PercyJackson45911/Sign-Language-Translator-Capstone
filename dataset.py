@@ -6,19 +6,18 @@ import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python.vision.hand_landmarker import HandLandmark, HandLandmarkerOptions
 import numpy as np
-import pandas as pd
 
 #loading files
-video_path = '../Dataset/WSASL/temp'
+video_path = '../Dataset/WSASL/test'
 mediapipe_data_path = '../Dataset/hand_tracking.task'
 
 with open('../Dataset/WSASL/Index.json', 'r') as f:
     data = json.load(f)
 
-array_dict = dict()
 all_landmark = list()
 
 global_framecount = 0
+video_number = 1
 #loading classes
 BaseOptions = mp.tasks.BaseOptions
 HandLandmarker = mp.tasks.vision.HandLandmarker
@@ -26,53 +25,44 @@ VisionRunningMode = mp.tasks.vision.RunningMode
 
 #config the landmarker
 options = HandLandmarkerOptions(base_options = BaseOptions(model_asset_path = mediapipe_data_path), running_mode = VisionRunningMode.VIDEO)
-with HandLandmarker.create_from_options(options) as landmarker:
-    #frame splicing
-    for x in data:
-        instance = x['instances']
-        for y in instance:
-                if y['split'] == 'train':
-                    id = y['video_id']
-                    vid = cv2.VideoCapture(f'{video_path}/{id}.mp4')
-                    fps = vid.get(cv2.CAP_PROP_FPS)
-                    framecount = 0
-                    while True:
-                        ret, frame = vid.read()
-                        if not ret:
-                            break
-                        #making it an image obj that mp can process
-                        else:
-                            timestamp = int(1000*global_framecount/fps)
-                            frame= cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                            mp_image = mp.Image(image_format = mp.ImageFormat.SRGB, data = frame)
-                            del frame
-                            result = landmarker.detect_for_video(mp_image, timestamp)
-                            global_framecount+=1
-                            if result.hand_landmarks:
-                                temp = [[lm.x, lm.y, lm.z] for lm in result.hand_landmarks[0]]
-                                del result
-                                all_landmark.append(temp)
-                                del temp
-                    vid.release()
-                    array_dict[id] = np.array(all_landmark)
-                    gc.collect()
-                else: continue
+with tf.io.TFRecordWriter('../Dataset/tfrecords/test.tfrecord') as writer: # starts the loop to write the shit to disk
+    with HandLandmarker.create_from_options(options) as landmarker: #initializes mp handlandmarker
+        #frame splicing
+        for x in data:
+            instance = x['instances']
+            for y in instance:
+                    if y['split'] == 'test':
+                        video_id = y['video_id']
+                        all_landmark.clear()
+                        vid = cv2.VideoCapture(f'{video_path}/{video_id}.mp4')
+                        fps = vid.get(cv2.CAP_PROP_FPS)
+                        while True:
+                            ret, frame = vid.read() #honestly have no clue why ret still exists but it don't work without it so :Shrug:
+                            if not ret:
+                                break
+                            else:
+                                timestamp = int(1000*global_framecount/fps) #timestamp for mp(god i hated this.. ts took forever to get working)
+                                frame= cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) #converting to Rgb just incase coz mp is a picky eater :/
+                                mp_image = mp.Image(image_format = mp.ImageFormat.SRGB, data = frame) #makes it something mp can process
+                                del frame #we mark frame to be deleted from memory coz we aint needing it anymore
+                                result = landmarker.detect_for_video(mp_image, timestamp)#we mark where the fingers are
+                                global_framecount+=1#increase frame count for mp
+                                if result.hand_landmarks: #checking if result has any data (otherwise it'll throw a fit)
+                                    all_landmark.append([[lm.x, lm.y, lm.z] for lm in result.hand_landmarks[0]])#stores the result for this frame
+                                    del result#bye bye result hello memory
+                        vid.release()# the video is a free man/woman again
+                        lndmrk_arr = np.array(all_landmark) # appends all the frames into one ginormous array.. hmm wonder if it is taller than a trex
+                        feature = { #does some hocus pocus that i do not fully yet understand but just go with coz it works (hopefully?)
+                            'video_id': tf.train.Feature(bytes_list=tf.train.BytesList(value=[video_id.encode()])), # the hocus pocus to store the video id
+                            'landmarks': tf.train.Feature(bytes_list=tf.train.BytesList(value=[lndmrk_arr.tobytes()])), # the hocus pocus to store the array
+                            'shape': tf.train.Feature(int64_list=tf.train.Int64List(value=[list(lndmrk_arr.shape)])) # the hocus pocus to store the shape, idk why but guess its imp
+                        } # hocus pocus over :(
+                        example = tf.train.Example(feature=tf.train.Features(feature=feature)) # just kidding.. its not.. :)
+                        writer.write(example.SerializeToString()) # now it is frfr
+                        del lndmrk_arr # bye bye list
+                        print(f'NO of videos done: {video_number}. {video_id} successfully written :thumbs_up:')
+                        video_number +=1
+                    else: continue
 
-data = list()
-for id, landmarks in array_dict.items():
-    for frame_landmarks in landmarks:
-        data.append([id]+frame_landmarks.tolist())
-df = pd.DataFrame(data, columns=["video_id", "landmark_x", "landmark_y", "landmark_z"])
-print(df)
-del df
-del data
-gc.collect()
-
-with tf.io.TFRecordWriter('train.tfrecord') as writer:
-    for id, array in array_dict.items():
-        feature = {
-            'video_id': tf.train.Feature(bytes_list=tf.train.BytesList(value = [id.encode])),
-            'landmarks': tf.train.Feature(bytes_list=tf.train.BytesList(value = [array.tobytes()])),
-            'shape' : tf.train.Feature(int64_list=tf.train.Int64List(value = [list(array.shape)]))
-        }
-        example = tf.train.Example(feature = tf.train.Features(feature=feature))
+print('All Done niggah')
+#if your reading this email me at abrahamkuruvila2008@proton.me with your favorite song right now.... pwease?
