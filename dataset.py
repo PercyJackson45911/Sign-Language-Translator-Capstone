@@ -1,23 +1,30 @@
+import gc
+import pathlib
+import os
+import matplotlib as plot
+import pandas as pd
 import cv2
 import tensorflow as tf
 import json
-import gc
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python.vision.hand_landmarker import HandLandmark, HandLandmarkerOptions
 import numpy as np
 
+from sort import video_id
+
 #loading files
-video_path = '../Dataset/WSASL/test'
+video_path = '../Dataset/WSASL/train'
 mediapipe_data_path = '../Dataset/hand_tracking.task'
 
 with open('../Dataset/WSASL/Index.json', 'r') as f:
     data = json.load(f)
 
 all_landmark = list()
+array_dict = {}
+np.set_printoptions(precision=4)
 
-global_framecount = 0
-video_number = 1
+
 #loading classes
 BaseOptions = mp.tasks.BaseOptions
 HandLandmarker = mp.tasks.vision.HandLandmarker
@@ -25,13 +32,15 @@ VisionRunningMode = mp.tasks.vision.RunningMode
 
 #config the landmarker
 options = HandLandmarkerOptions(base_options = BaseOptions(model_asset_path = mediapipe_data_path), running_mode = VisionRunningMode.VIDEO)
-with tf.io.TFRecordWriter('../Dataset/tfrecords/test.tfrecord') as writer: # starts the loop to write the shit to disk
+def video_generator():
+    video_number = 1
+    global_framecount = 0
     with HandLandmarker.create_from_options(options) as landmarker: #initializes mp handlandmarker
         #frame splicing
         for x in data:
             instance = x['instances']
             for y in instance:
-                    if y['split'] == 'test':
+                    if y['split'] == 'train':
                         video_id = y['video_id']
                         all_landmark.clear()
                         vid = cv2.VideoCapture(f'{video_path}/{video_id}.mp4')
@@ -51,18 +60,27 @@ with tf.io.TFRecordWriter('../Dataset/tfrecords/test.tfrecord') as writer: # sta
                                     all_landmark.append([[lm.x, lm.y, lm.z] for lm in result.hand_landmarks[0]])#stores the result for this frame
                                     del result#bye bye result hello memory
                         vid.release()# the video is a free man/woman again
-                        lndmrk_arr = np.array(all_landmark) # appends all the frames into one ginormous array.. hmm wonder if it is taller than a trex
-                        feature = { #does some hocus pocus that i do not fully yet understand but just go with coz it works (hopefully?)
-                            'video_id': tf.train.Feature(bytes_list=tf.train.BytesList(value=[video_id.encode()])), # the hocus pocus to store the video id
-                            'landmarks': tf.train.Feature(bytes_list=tf.train.BytesList(value=[lndmrk_arr.tobytes()])), # the hocus pocus to store the array
-                            'shape': tf.train.Feature(int64_list=tf.train.Int64List(value=[list(lndmrk_arr.shape)])) # the hocus pocus to store the shape, idk why but guess its imp
-                        } # hocus pocus over :(
-                        example = tf.train.Example(feature=tf.train.Features(feature=feature)) # just kidding.. its not.. :)
-                        writer.write(example.SerializeToString()) # now it is frfr
-                        del lndmrk_arr # bye bye list
+                        landmark_arr = np.array(all_landmark) # appends all the frames into one ginormous array.. hmm wonder if it is taller than a trex
+                        sample = {
+                            'video_id': tf.constant('video_id'),
+                            'landmarks': tf.constant(landmark_arr),  # converted to tensor
+                            'shape': tf.constant(landmark_arr.shape)
+                        }
+                        del landmark_arr
                         print(f'NO of videos done: {video_number}. {video_id} successfully written :thumbs_up:')
                         video_number +=1
+                        gc.collect()
                     else: continue
+
+
+dataset = tf.data.Dataset.from_generator(
+    video_generator,
+    output_signature = {
+        'video_id': tf.TensorSpec(shape = (), dtype = tf.string),
+        'landmarks': tf.TensorSpec(shape = (None, 21, 3), dtype = tf.float32),
+        'shape': tf.TensorSpec(shape = (3,), dtype = tf.int32)
+    }
+)
 
 print('All Done niggah')
 #if your reading this email me at abrahamkuruvila2008@proton.me with your favorite song right now.... pwease?
