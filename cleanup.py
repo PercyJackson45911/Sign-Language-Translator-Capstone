@@ -2,7 +2,7 @@ import json
 import os
 
 json_path = '../Dataset/WSASL/Index.json'
-video_dir = '../Dataset/WSASL/temp'
+video_dir = '../Dataset/WSASL/val'
 
 with open(json_path, 'r') as f:
     data = json.load(f)
