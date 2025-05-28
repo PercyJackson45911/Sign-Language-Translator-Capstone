@@ -30,6 +30,7 @@ with tf.io.TFRecordWriter('../Dataset/tfrecords/test.tfrecord') as writer: # sta
         #frame splicing
         for x in data:
             instance = x['instances']
+            gloss = x['gloss']
             for y in instance:
                     if y['split'] == 'test':
                         video_id = y['video_id']
@@ -53,13 +54,14 @@ with tf.io.TFRecordWriter('../Dataset/tfrecords/test.tfrecord') as writer: # sta
                         vid.release()# the video is a free man/woman again
                         lndmrk_arr = np.array(all_landmark) # appends all the frames into one ginormous array.. hmm wonder if it is taller than a trex
                         feature = { #does some hocus pocus that i do not fully yet understand but just go with coz it works (hopefully?)
-                            'video_id': tf.train.Feature(bytes_list=tf.train.BytesList(value=[video_id.encode()])), # the hocus pocus to store the video id
+                            'gloss': tf.train.Feature(bytes_list=tf.train.BytesList(value=[gloss.encode()])), # the hocus pocus to store the video id
                             'landmarks': tf.train.Feature(bytes_list=tf.train.BytesList(value=[lndmrk_arr.tobytes()])), # the hocus pocus to store the array
-                            'shape': tf.train.Feature(int64_list=tf.train.Int64List(value=[list(lndmrk_arr.shape)])) # the hocus pocus to store the shape, idk why but guess its imp
+                            'shape': tf.train.Feature(int64_list=tf.train.Int64List(value=(lndmrk_arr.shape))) # the hocus pocus to store the shape, idk why but guess its imp
                         } # hocus pocus over :(
-                        example = tf.train.Example(feature=tf.train.Features(feature=feature)) # just kidding.. its not.. :)
+                        example = tf.train.Example(features=tf.train.Features(feature=feature)) # just kidding.. its not.. :)
                         writer.write(example.SerializeToString()) # now it is frfr
                         del lndmrk_arr # bye bye list
+                        gc.collect()
                         print(f'NO of videos done: {video_number}. {video_id} successfully written :thumbs_up:')
                         video_number +=1
                     else: continue
