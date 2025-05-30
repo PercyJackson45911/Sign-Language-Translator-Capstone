@@ -8,7 +8,7 @@ from mediapipe.tasks.python.vision.hand_landmarker import HandLandmark, HandLand
 import numpy as np
 
 #loading files
-video_path = '../Dataset/WSASL/test'
+video_path = '../Dataset/WSASL/val'
 mediapipe_data_path = '../Dataset/hand_tracking.task'
 
 with open('../Dataset/WSASL/Index.json', 'r') as f:
@@ -25,14 +25,14 @@ VisionRunningMode = mp.tasks.vision.RunningMode
 
 #config the landmarker
 options = HandLandmarkerOptions(base_options = BaseOptions(model_asset_path = mediapipe_data_path), running_mode = VisionRunningMode.VIDEO)
-with tf.io.TFRecordWriter('../Dataset/tfrecords/test.tfrecord') as writer: # starts the loop to write the shit to disk
+with tf.io.TFRecordWriter('../Dataset/tfrecords/val.tfrecord') as writer: # starts the loop to write the shit to disk
     with HandLandmarker.create_from_options(options) as landmarker: #initializes mp handlandmarker
         #frame splicing
         for x in data:
             instance = x['instances']
             gloss = x['gloss']
             for y in instance:
-                    if y['split'] == 'test':
+                    if y['split'] == 'val':
                         video_id = y['video_id']
                         all_landmark.clear()
                         vid = cv2.VideoCapture(f'{video_path}/{video_id}.mp4')

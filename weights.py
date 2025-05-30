@@ -1,24 +1,38 @@
 import tensorflow as tf
 import numpy as np
 
-def _bytes_feature(value):
-  """Returns a bytes_list from a string / byte."""
-  if isinstance(value, type(tf.constant(0))):
-    value = value.numpy() # BytesList won't unpack a string from an EagerTensor.
-  return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
+record_filepath = '../Dataset/tfrecords/train.tfrecord'
 
-def _float_feature(value):
-  """Returns a float_list from a float / double."""
-  return tf.train.Feature(float_list=tf.train.FloatList(value=[value]))
+record = tf.data.TFRecordDataset(record_filepath)
+result = dict()
+gloss_to_id = dict()
+id_to_gloss = dict()
+landmark_dict = dict()
 
-def _int64_feature(value):
-  """Returns an int64_list from a bool / enum / int / uint."""
-  return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
 
-print(_bytes_feature(b'test_string'))
-print(_bytes_feature(u'test_bytes'.encode('utf-8')))
+def generator():
+    id = 0
+    for i in record:
+        example = tf.train.Example()
+        example.ParseFromString(i.numpy())
+        result = {}
+        for key, feature in example.features.feature.items():
+            kind = feature.WhichOneof('kind')
+            result[key] = getattr(feature, kind).value
 
-print(_float_feature(np.exp(1)))
+        gloss = result['gloss'][0].decode('utf-8')
+        shape = result['shape']
+        landmarks_raw = result['landmarks'][0]
+        landmarks = np.frombuffer(landmarks_raw, dtype=np.float64).reshape(shape)
 
-print(_int64_feature(True))
-print(_int64_feature(1))
+        if gloss not in gloss_to_id:
+            gloss_to_id[gloss] = id
+            id_to_gloss[id] = gloss
+            id += 1
+
+        yield (gloss_to_id[gloss], landmarks)
+
+output_signature = (tf.TensorSpec(shape=(), dtype = tf.int32),
+                    tf.TensorSpec(shape=(41,21,3), dtype = tf.float32))
+
+dataset =  tf.data.Dataset.from_generator(generator, output_signature = output_signature)
