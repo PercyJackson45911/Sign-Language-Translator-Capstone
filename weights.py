@@ -3,7 +3,7 @@ import numpy as np
 import keras
 from keras import layers
 
-record_filepath = '../Dataset/tfrecords/train.tfrecord'
+record_filepath = '/mnt/external/Capstone_Project/Dataset/tfrecords/train.tfrecord'
 
 record = tf.data.TFRecordDataset(record_filepath)
 result = dict()
@@ -31,34 +31,48 @@ def generator():
             gloss_to_id[gloss] = id
             id_to_gloss[id] = gloss
             id += 1
+        print(landmarks.shape)
+        if landmarks.shape==(41,21,3):
+            print(landmarks.shape)
+            yield (landmarks, gloss_to_id[gloss])
+        else:
+            print('failure')
 
-        yield (gloss_to_id[gloss], landmarks)
-
-def preprocess(label, landmarks):
+def preprocess(landmarks, label):
     landmarks = tf.cast(landmarks, tf.float32)
     landmarks -= tf.reduce_mean(landmarks, axis=1, keepdims=True)  # center
     landmarks /= tf.math.reduce_std(landmarks) + 1e-6  # normalize
-    return label, landmarks
+    return landmarks, label
 
 
-output_signature = (tf.TensorSpec(shape=(), dtype = tf.int32),
-                    tf.TensorSpec(shape=(41,21,3), dtype = tf.float32))
+output_signature = (
+    tf.TensorSpec(shape=(41,21,3), dtype=tf.float32),
+    tf.TensorSpec(shape=(), dtype=tf.int32)
+)
+
 
 train_dataset =  tf.data.Dataset.from_generator(generator, output_signature = output_signature)
 train_dataset = train_dataset.map(preprocess)
-train_dataset = train_dataset.shuffle(1000).batch(32)
+train_dataset = train_dataset.shuffle(1000).batch(32).repeat()
 num_classes = len(id_to_gloss)
 
-model = keras.Sequential(
+model = keras.Sequential([
     tf.keras.layers.Input(shape=(41,21,3)),
-    tf.keras.layers.Reshape(shape=(41,63)),
+    tf.keras.layers.Reshape((41,63)),
     tf.keras.layers.GRU(256, return_sequences=True),
     tf.keras.layers.Dropout(0.3),
     tf.keras.layers.GRU(256, return_sequences=False),
-    tf.keras.layers.Dense(num_classes, activation = 'softmax'))
+    tf.keras.layers.Dense(num_classes, activation = 'softmax')])
 
 model.compile(
     optimizer='adam',
     loss='sparse_categorical_crossentropy',
     metrics=['accuracy']
 )
+
+print(len(list(train_dataset)))
+
+model.fit(train_dataset, epochs=5, steps_per_epoch=100)
+
+model.save("/mnt/external/Capstone_Project/Dataset/weights/wsaslGRU.keras")
+print()
