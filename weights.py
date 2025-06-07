@@ -1,78 +1,56 @@
-import tensorflow as tf
-import numpy as np
-import keras
-from keras import layers
+import torch
+import os
+from torch.utils.data import Dataset, DataLoader
+from torch.nn.utils.rnn import pad_sequence
+import json
 
-record_filepath = '/mnt/external/Capstone_Project/Dataset/tfrecords/train.tfrecord'
+train_filepath = '/mnt/external/Capstone_Project/Dataset/pt_files/train'
+test_filepath = '/mnt/external/Capstone_Project/Dataset/pt_files/test'
+val_filepath = '/mnt/external/Capstone_Project/Dataset/pt_files/val'
 
-record = tf.data.TFRecordDataset(record_filepath)
-result = dict()
-gloss_to_id = dict()
-id_to_gloss = dict()
-landmark_dict = dict()
+with open('Index.json', 'r') as f:
+    data = json.load(f)
 
+class DatasetMaker6969Mrk7432(Dataset):
+    def __init__(self, data, root_filepath, split):
+        self.data = data  # your JSON loaded data
+        self.root_filepath = root_filepath
+        self.samples = []
+        self.failed_samples = []
+        self.split = split
+        for entry in data:
+            gloss = entry['gloss']
+            for instance in entry['instance']:
+                if instance['split'] == split:
+                    video_id = instance['video_id']
+                else:
+                    continue
+                filepath = os.path.join(root_filepath, split, video_id)
+                if os.path.exists(filepath):
+                    self.samples.append((filepath, gloss))
+                else:
+                    self.failed_samples.append(video_id)
 
-def generator():
-    id = 0
-    for i in record:
-        example = tf.train.Example()
-        example.ParseFromString(i.numpy())
-        result = {}
-        for key, feature in example.features.feature.items():
-            kind = feature.WhichOneof('kind')
-            result[key] = getattr(feature, kind).value
+        # Build gloss_to_id for label encoding
+        unique_glosses = set([s[1] for s in self.samples])
+        self.gloss_to_id = {g: i for i, g in enumerate(sorted(unique_glosses))}
 
-        gloss = result['gloss'][0].decode('utf-8')
-        shape = result['shape']
-        landmarks_raw = result['landmarks'][0]
-        landmarks = np.frombuffer(landmarks_raw, dtype=np.float64).reshape(shape)
+    def __len__(self):
+        return len(self.samples)
 
-        if gloss not in gloss_to_id:
-            gloss_to_id[gloss] = id
-            id_to_gloss[id] = gloss
-            id += 1
-        print(landmarks.shape)
-        if landmarks.shape==(41,21,3):
-            print(landmarks.shape)
-            yield (landmarks, gloss_to_id[gloss])
-        else:
-            print('failure')
-
-def preprocess(landmarks, label):
-    landmarks = tf.cast(landmarks, tf.float32)
-    landmarks -= tf.reduce_mean(landmarks, axis=1, keepdims=True)  # center
-    landmarks /= tf.math.reduce_std(landmarks) + 1e-6  # normalize
-    return landmarks, label
-
-
-output_signature = (
-    tf.TensorSpec(shape=(41,21,3), dtype=tf.float32),
-    tf.TensorSpec(shape=(), dtype=tf.int32)
-)
+    def __getitem__(self, idx):
+        filepath, gloss = self.samples[idx]
+        pt = torch.load(filepath)
+        landmarks = pt['landmarks']  # Tensor list or tensor, confirm this
+        # Pad landmarks to longest seq in batch later, so just return raw here
+        label = self.gloss_to_id[gloss]
+        return landmarks, label
 
 
-train_dataset =  tf.data.Dataset.from_generator(generator, output_signature = output_signature)
-train_dataset = train_dataset.map(preprocess)
-train_dataset = train_dataset.shuffle(1000).batch(32).repeat()
-num_classes = len(id_to_gloss)
+def collate_fn(batch):
+    sequences = [item[0] for item in batch]
+    labels = torch.tensor([item[1] for item in batch])
+    padded_sequences = pad_sequence(sequences, batch_first=True)
+    return padded_sequences, labels
 
-model = keras.Sequential([
-    tf.keras.layers.Input(shape=(41,21,3)),
-    tf.keras.layers.Reshape((41,63)),
-    tf.keras.layers.GRU(256, return_sequences=True),
-    tf.keras.layers.Dropout(0.3),
-    tf.keras.layers.GRU(256, return_sequences=False),
-    tf.keras.layers.Dense(num_classes, activation = 'softmax')])
-
-model.compile(
-    optimizer='adam',
-    loss='sparse_categorical_crossentropy',
-    metrics=['accuracy']
-)
-
-print(len(list(train_dataset)))
-
-model.fit(train_dataset, epochs=5, steps_per_epoch=100)
-
-model.save("/mnt/external/Capstone_Project/Dataset/weights/wsaslGRU.keras")
-print()
+train_dataset = DatasetMaker6969Mrk7432(data, train_filepath, 'train')
